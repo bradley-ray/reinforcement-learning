@@ -19,9 +19,9 @@ class DQN(nn.Module):
     def __init__(self, num_actions):
         super().__init__()
         self.model = nn.Sequential(*[
-            nn.Conv2d(in_channels=1, out_channels=16, kernel_size=8, stride=4),
+            nn.Conv2d(1, 16, 8, 4),
             nn.ReLU(),
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=4, stride=2),
+            nn.Conv2d(16, 32, 4, 2),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(2592, 256),
