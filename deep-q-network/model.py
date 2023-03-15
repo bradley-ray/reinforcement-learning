@@ -1,35 +1,16 @@
-#!/usr/bin/env python3
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torchvision.transforms as T
 
 import cv2
-from PIL import Image
 import numpy as np
-import gymnasium as gym
-
 import os
 
-DEVICE = os.getenv("DEVICE", "cpu")
-
-def transforms(env):
+def transforms(env, device='cpu'):
     obs = cv2.resize(env.render(), (110,84))
     obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
-    obs = torch.from_numpy(obs).float().reshape((1, 84, 110)).to(DEVICE)
+    obs = torch.from_numpy(obs).float().reshape((1, 84, 110)).to(device)
     return obs
-
-def env_to_img(arr):
-  to_img = T.ToPILImage()
-  arr = torch.from_numpy(arr).permute(2,0,1).to(DEVICE)
-  img = to_img(arr)
-  return img
-
-def save_replay(loc, name, buf, dur):
-  buf = list(map(env_to_img, buf))
-  buf[0].save(f'{loc}/{name}.gif', format='GIF', append_images=buf,
-          save_all=True, duration=dur, loop=0)
-
 
 class DQNSimple(nn.Module):
     def __init__(self, obs_dim, act_dim, h_dim):
@@ -58,16 +39,17 @@ class DQNPixel(nn.Module):
         return out
 
 class ReplayBuffer:
-    def __init__(self, capacity, obs_dim, act_dim):
+    def __init__(self, capacity, obs_dim, act_dim, device='cpu'):
+        self.device = device
         self.capacity = capacity
         self.idx = 0
         self.size = 0
 
-        self.obs_buf = torch.zeros((self.capacity, *obs_dim), requires_grad=False).float().to(DEVICE)
-        self.act_buf = torch.zeros((self.capacity, 1), requires_grad=False).long().to(DEVICE)
-        self.rew_buf = torch.zeros((self.capacity, 1), requires_grad=False).float().to(DEVICE)
-        self.done_buf = torch.zeros((self.capacity, 1), requires_grad=False).float().to(DEVICE)
-        self.obs_n_buf = torch.zeros((self.capacity, *obs_dim), requires_grad=False).float().to(DEVICE)
+        self.obs_buf = torch.zeros((self.capacity, *obs_dim), requires_grad=False).float().to(self.device)
+        self.act_buf = torch.zeros((self.capacity, 1), requires_grad=False).long().to(self.device)
+        self.rew_buf = torch.zeros((self.capacity, 1), requires_grad=False).float().to(self.device)
+        self.done_buf = torch.zeros((self.capacity, 1), requires_grad=False).float().to(self.device)
+        self.obs_n_buf = torch.zeros((self.capacity, *obs_dim), requires_grad=False).float().to(self.device)
 
     def append(self, exp):
         self.obs_buf[self.idx] = exp[0]
@@ -93,18 +75,19 @@ class ReplayBuffer:
 
 
 class Agent:
-    def __init__(self, env, model, *args):
+    def __init__(self, env, model, *args, device='cpu'):
+        self.device = device
         self.pixels = model != DQNSimple
         self.env = env
         if self.pixels:
-            self.memory = ReplayBuffer(10_000, (1, 84, 110), int(env.action_space.n))
+            self.memory = ReplayBuffer(10_000, (1, 84, 110), int(env.action_space.n), device=self.device)
         else:
-            self.memory = ReplayBuffer(10_000, env.observation_space.shape, int(env.action_space.n))
-        self.q = model(*args).to(DEVICE)
+            self.memory = ReplayBuffer(10_000, env.observation_space.shape, int(env.action_space.n), device=self.device)
+        self.q = model(*args).to(self.device)
 
     def reset(self):
         obs, _ = self.env.reset()
-        self.obs = torch.from_numpy(obs).float().detach().to(DEVICE)
+        self.obs = torch.from_numpy(obs).float().detach().to(self.device)
         if self.pixels:
             self.obs = transforms(self.env)
 
@@ -125,7 +108,7 @@ class Agent:
     def step(self, eps):
         action = self.get_action(eps)
         obs_n, reward, term, trunc, _ = self.env.step(action)
-        obs_n = torch.from_numpy(obs_n).float().detach().to(DEVICE)
+        obs_n = torch.from_numpy(obs_n).float().detach().to(self.device)
         if self.pixels:
             obs_n = transforms(self.env)
         done = term or trunc
@@ -168,53 +151,18 @@ class Agent:
         self.reset()
         done = False
         steps = 0
-        reward = 0
+        eps_reward = 0
         while not done and steps < max_steps:
-            render = agent.env.render()
+            render = self.env.render()
             replay.append(render)
-            action = agent.get_action(-1)
-            self.obs, reward, term, trunc, _ = agent.env.step(action)
-            self.obs = torch.from_numpy(self.obs).float().to(DEVICE)
+            action = self.get_action(-1)
+            self.obs, reward, term, trunc, _ = self.env.step(action)
+            self.obs = torch.from_numpy(self.obs).float().to(self.device)
             if self.pixels:
                 self.obs = transforms(self.env)
             done = term or trunc
             steps += 1
-        render = agent.env.render()
+            eps_reward += reward
+        render = self.env.render()
         replay.append(render)
-        return replay, reward
-
-
-
-
-if __name__ == '__main__':
-    # env_name = 'CartPole-v1'
-    env_name = 'LunarLander-v2'
-    env = gym.make(env_name, render_mode='rgb_array')
-    agent = Agent(env, DQNSimple, env.observation_space.shape[0], int(env.action_space.n), 128)
-    # agent = Agent(env, DQNPixel, int(env.action_space.n), 256)
-    opt = optim.Adam(agent.q.parameters(), lr=1e-3)
-    # eps = lambda t: max(0.99**(t/64), 0.1)
-    eps = lambda _: 0.1
-    gamma = 0.99
-    bs = 64
-
-    agent.fill_memory(1000)
-    num_eps = 1500
-    total_reward = 0
-    steps = 0
-    for n in range(num_eps):
-        agent.reset()
-        reward, loss, steps = agent.fit(eps, gamma, opt, bs, steps, 100_000)
-        total_reward += reward
-        if n % 50 == 0:
-            print(f'Episode {n} - reward: {reward} - avg reward: {total_reward/50} - loss: {loss}')
-            total_reward = 0
-    
-    # generate about 10 replays
-    for i in range(10):
-        replay = agent.play(100_000)
-        save_replay('.', f'dqn-{env_name[:-3].lower()}-{i}', replay, 30)
-        print(f'saved replay: {len(replay)} frames')
-        print(f'reward: {reward}')
-        print()
-    env.close()
+        return replay, eps_reward
