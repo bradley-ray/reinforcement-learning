@@ -20,31 +20,37 @@ def save_replay(loc, name, buf, dur):
           save_all=True, duration=dur, loop=0)
 
 if __name__ == '__main__':
-    env_name = 'CartPole-v1'
-    # env_name = 'LunarLander-v2'
+    # env_name = 'CartPole-v1'
+    env_name = 'LunarLander-v2'
+
     env = gym.make(env_name, render_mode='rgb_array')
     agent = dqn.Agent(env, dqn.DQNSimple, env.observation_space.shape[0], int(env.action_space.n), 128, device=DEVICE)
+
     # TODO: train working pixel model
-    # agent = model.Agent(env, DQNPixel, int(env.action_space.n), 256, device=DEVICE)
+    #agent = dqn.Agent(env, dqn.DQNPixel, int(env.action_space.n), 256, device=DEVICE)
+
     opt = optim.Adam(agent.q.parameters(), lr=1e-3)
 
-    # only tested on cartpole
     eps = lambda t: max(0.1, 1 - t*1e-4)
-    # gives decent results for cartpole & lunarlander
     #eps = lambda _: 0.1
     gamma = 0.99
-    bs = 64
+    train_freq = 3
+    bs = 32
+    replay_size = 10_000
+    max_steps = 10_000
 
-    agent.fill_memory(10_000)
+    agent.fill_memory(replay_size)
+
     # cartpole
-    num_eps = 500
+    # num_eps = 500
     # lunarlander
     num_eps = 1500
+
     total_reward = 0
     step = 0
     for n in range(num_eps):
         agent.reset()
-        reward, loss, steps = agent.fit(eps, gamma, opt, bs, step, 10_000)
+        reward, loss, steps = agent.fit(eps, gamma, train_freq, opt, bs, step, max_steps)
         step += steps
         total_reward += reward
         if n % 50 == 0:

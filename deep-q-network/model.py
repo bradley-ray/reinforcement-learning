@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as T
 
+from copy import deepcopy
+
 import cv2
 import numpy as np
 import os
@@ -84,6 +86,7 @@ class Agent:
         else:
             self.memory = ReplayBuffer(10_000, env.observation_space.shape, int(env.action_space.n), device=self.device)
         self.q = model(*args).to(self.device)
+        self.q_tgt = deepcopy(self.q)
 
     def reset(self):
         obs, _ = self.env.reset()
@@ -117,11 +120,12 @@ class Agent:
         self.obs = obs_n
         return reward, done
     
-    def fit(self, eps_fn, gamma, opt,  bs, step, max_steps):
+    def fit(self, eps_fn, gamma, tgt_freq, opt,  bs, step, max_steps):
         eps_reward = 0
         eps_loss = 0
         steps = 0
         self.q.train()
+        self.q_tgt.train()
         for t in range(max_steps):
             eps = eps_fn(step + t)
             reward, eps_done = self.step(eps)
@@ -130,13 +134,15 @@ class Agent:
             opt.zero_grad()
 
             (obs, action, reward, done, obs_n) = self.memory.sample(bs)
-            q_vals = self.q(obs_n).max(-1, keepdim=True).values
+            q_vals = self.q_tgt(obs_n).max(-1, keepdim=True).values
             tgt = reward + (1-done)*gamma*q_vals
             pred = self.q(obs)[torch.arange(bs), action.reshape(-1)].reshape((-1,1))
             assert(tgt.shape == pred.shape), f'tgt:{tgt.shape} != pred:{pred.shape}'
             mse_loss = (tgt-pred).pow(2).mean()
             mse_loss.backward()
             opt.step()
+            if t % tgt_freq == 0:
+                self.q_tgt = deepcopy(self.q)
             eps_loss += mse_loss.item()
             if eps_done:
                 steps = t
