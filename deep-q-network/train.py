@@ -29,12 +29,12 @@ if __name__ == '__main__':
     # TODO: train working pixel model
     #agent = dqn.Agent(env, dqn.DQNPixel, int(env.action_space.n), 256, device=DEVICE)
 
-    opt = optim.Adam(agent.q.parameters(), lr=1e-3)
+    opt = optim.Adam(agent.q.parameters(), lr=3e-4)
 
     eps = lambda t: max(0.1, 1 - t*1e-4)
     #eps = lambda _: 0.1
     gamma = 0.99
-    train_freq = 3
+    train_freq = [10**i for i in range(4)]
     bs = 32
     replay_size = 10_000
     max_steps = 10_000
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     step = 0
     for n in range(num_eps):
         agent.reset()
-        reward, loss, steps = agent.fit(eps, gamma, train_freq, opt, bs, step, max_steps)
+        reward, loss, steps = agent.fit(eps, gamma, 500, opt, bs, step, max_steps)
         step += steps
         total_reward += reward
         if n % 50 == 0:
