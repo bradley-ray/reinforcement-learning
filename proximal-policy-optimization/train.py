@@ -18,11 +18,14 @@ def save_replay(loc, name, buf, dur):
 
 if __name__ == '__main__':
     env_name = 'CartPole-v1'
+    env_name = 'LunarLander-v2'
 
     env = gym.make(env_name, render_mode='rgb_array')
 
-    epochs = 10
-    steps = 4096
+    # epochs = 10
+    # steps = 4096
+    epochs = 50
+    steps = 8192
     bs = 32
     gamma = 0.99
     lam = 0.95
@@ -31,7 +34,10 @@ if __name__ == '__main__':
     agent = Agent(env=env, capacity=steps)
 
     actor_epochs = critic_epochs = 15
-    actor_lr = critic_lr = 1e-2
+    # actor_lr = critic_lr = 1e-2
+    actor_lr = 1e-3
+    critic_lr = 3e-3
+
 
     actor_opt = Adam(agent.actor.parameters(), lr=actor_lr)
     critic_opt = Adam(agent.critic.parameters(), lr=critic_lr)
