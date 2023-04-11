@@ -10,6 +10,7 @@ Run for 1000 iterations and take average reward.
 Baseline agent randomly samples from action space
 
 ### Lunar Lander - Discrete
+![](https://github.com/bradley-ray/reinforcement-learning/blob/master/proximal-policy-optimization/replays/dqn-lunarlander-9.gif?raw=true)
 - agent: 287.1338
 - baseline: -158.1184
 
