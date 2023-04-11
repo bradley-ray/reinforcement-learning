@@ -3,12 +3,26 @@ from model import Agent
 from torch.optim import Adam
 import torch
 import gymnasium as gym
+import torchvision.transforms as T
+
+def env_to_img(arr):
+  to_img = T.ToPILImage()
+  arr = torch.from_numpy(arr).permute(2,0,1)
+  img = to_img(arr)
+  return img
+
+def save_replay(loc, name, buf, dur):
+  buf = list(map(env_to_img, buf))
+  buf[0].save(f'{loc}/{name}.gif', format='GIF', append_images=buf,
+          save_all=True, duration=dur, loop=0)
 
 if __name__ == '__main__':
-    env = gym.make('CartPole-v1')
+    env_name = 'CartPole-v1'
 
-    epochs = 100
-    steps = 2048
+    env = gym.make(env_name, render_mode='rgb_array')
+
+    epochs = 10
+    steps = 4096
     bs = 32
     gamma = 0.99
     lam = 0.95
@@ -16,7 +30,7 @@ if __name__ == '__main__':
 
     agent = Agent(env=env, capacity=steps)
 
-    actor_epochs = critic_epochs = 50
+    actor_epochs = critic_epochs = 15
     actor_lr = critic_lr = 1e-2
 
     actor_opt = Adam(agent.actor.parameters(), lr=actor_lr)
@@ -34,26 +48,21 @@ if __name__ == '__main__':
         'critic_epochs': critic_epochs,
     }
 
+    # train agent
     agent.fit(hparams, actor_opt, critic_opt)
 
-    # compare to baseline agent
-    baseline = Agent(env, capacity=steps)
-    rews = []
-    ep_rews = []
-    for i in range(1_000):
-        action, _, _ = baseline.step()
-        action = action.item()
-        obs, reward, term, trunc, _ = baseline.env.step(action)
-        ep_rews.append(reward)
-        if term or trunc:
-            obs, _ = env.reset()
-            rews.append(sum(ep_rews))
-        baseline.obs = torch.from_numpy(obs)
+    # save some replays of agent 
+    for i in range(10):
+        replay, reward = agent.play()
+        save_replay(f'./replays', f'dqn-{env_name[:-3].lower()}-{i}', replay, 30)
+        print(f'saved replay: {len(replay)} frames')
+        print(f'reward: {reward}\n')
 
-    print('baseline:', sum(rews)/len(rews))
+    print("Baseline Comparison")
+    print("===================")
 
-    # trained agent
-    agent = Agent(env, capacity=steps)
+    # test trained agent
+    env.reset()
     rews = []
     ep_rews = []
     for i in range(1_000):
@@ -64,7 +73,23 @@ if __name__ == '__main__':
         if term or trunc:
             obs, _ = env.reset()
             rews.append(sum(ep_rews))
+            ep_rews = []
         agent.obs = torch.from_numpy(obs)
+    print(f'agent: {sum(rews)/len(rews):.4f}')
 
-    print('agent:', sum(rews)/len(rews))
+    # compare to baseline random sampling
+    env.reset()
+    rews = []
+    ep_rews = []
+    for i in range(1_000):
+        action = env.action_space.sample().item()
+        _, reward, term, trunc, _ = env.step(action)
+        ep_rews.append(reward)
+        if term or trunc:
+            env.reset()
+            rews.append(sum(ep_rews))
+            ep_rews = []
+
+    print(f'baseline: {sum(rews)/len(rews):.4f}')
+
 
