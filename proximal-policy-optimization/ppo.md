@@ -13,6 +13,3 @@ Baseline agent randomly samples from action space
 ![](https://github.com/bradley-ray/reinforcement-learning/blob/master/proximal-policy-optimization/replays/dqn-lunarlander-9.gif?raw=true)
 - agent: 287.1338
 - baseline: -158.1184
-
-### Lunar Lander - Continuous
-- *TODO*
